@@ -1,20 +1,19 @@
+import time, requests, random
 from bs4 import BeautifulSoup
 from collections import deque
 from openpyxl import load_workbook
 from openpyxl.styles import Font, PatternFill
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
-# from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-import time
-import requests
+from selenium.webdriver.chrome.options import Options
+# from selenium.webdriver.chrome.service import Service
 from requests import Session
 from termcolor import colored
-import random
+from config import FILE_PATH, OUTPUT_FILE
 
 # determines if links should be case sensitive or not
 CASE_SENSITIVE = False
-Chromedriver_Path = r'C:\Users\Anushka Goyal\Revizor\chromedriver\chromedriver120.exe'
+# Chromedriver_Path = r'C:\Users\Anushka Goyal\Revizor\chromedriver\chromedriver120.exe'
 
 HEADERS_LIST = [
 'Mozilla/5.0 (Windows; U; Windows NT 6.1; x64; fr; rv:1.9.2.13) Gecko/20101203 Firebird/3.6.13',
@@ -28,15 +27,15 @@ HEADERS_LIST = [
 def init_driver():
     """Initialize the chrome web driver with necessary parameters and return the driver"""
     # set up the chrome options
-    # chrome_options = Options()
-    service = Service(executable_path=Chromedriver_Path)
+    chrome_options = Options()
+    # service = Service(executable_path=Chromedriver_Path)
     chrome_options = webdriver.ChromeOptions()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--log-level=3")
 
     # initialize the chrome web driver
-    # driver = webdriver.Chrome(options=chrome_options)
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    driver = webdriver.Chrome(options=chrome_options)
+    # driver = webdriver.Chrome(service=service, options=chrome_options)
 
 
     return driver
@@ -59,7 +58,8 @@ def get_html(driver: webdriver.Chrome, url: str, sleep=10) -> str:
         print(colored(f"Successfully Scraped {url}", 'green'))
         return html
     except Exception as exception:
-        print(colored(f"{url} failed due to {str(exception)}", 'red'))
+        # print(colored(f"{url} failed due to {str(exception)}", 'red'))
+        print('Exception case')
 
 
 # Run get_html and return a soup object
@@ -81,7 +81,7 @@ def website_urls_generator(websites, start=2):
 
 
 # takes an url and returns its status code and final redirected url
-def get_final_link(url, session, wb):
+def get_final_link(url, session, wb, wb_output):
     if url:
         # creating the request Session
         header = {
@@ -103,11 +103,11 @@ def get_final_link(url, session, wb):
         except requests.exceptions.ConnectionError as err:
             final_url = url
             error = str(err)
-            wb["Errors"].append(
+            wb_output["Errors"].append(
                 ("Failed to get the final url for ", url, "Due to", error)
             )
         except Exception as err:
-            wb["Errors"].append(
+            wb_output["Errors"].append(
                 ("Failed to get the final url for ", url, "Due to", str(err))
             )
         return final_url
@@ -240,17 +240,19 @@ def map_homepage_links(driver, main_url):
 
 
 # combine all the functions to get the expected output
-def main(file_path, driver, homepage_only=True, start=2):
+def main(file_path, output_file, driver, homepage_only=True, start=2):
     issues_recorded = []
     wb = load_workbook(file_path)
-    websites = wb['Websites']
-    webpages = wb.create_sheet('Webpages') if 'Webpages' not in wb.sheetnames else wb['Webpages']
-    errors = wb.create_sheet('Errors') if 'Errors' not in wb.sheetnames else wb['Errors']
+    websites = wb['Input']
+    # webpages = wb.create_sheet('Webpages') if 'Webpages' not in wb.sheetnames else wb['Webpages']
 
     font = Font(color="000000", bold=True)
     bg_color = PatternFill(fgColor='E8E8E8', fill_type='solid')
-
+    
     # editing the users sheet
+    wb_output = load_workbook(output_file)
+    errors = wb_output.create_sheet('Errors') if 'Errors' not in wb_output.sheetnames else wb_output['Errors']
+    webpages = wb_output['Webpages']
     webpage_columns = zip(('A',  'B', 'C'), ('Website', 'Webpage', 'Final Link Destination'))
     for col, value in webpage_columns:
         cell = webpages[f'{col}1']
@@ -276,7 +278,7 @@ def main(file_path, driver, homepage_only=True, start=2):
                 count += 1
                 # get the final destination of a link
                 # print(webpage)
-                final_link = get_final_link(webpage, session, wb)
+                final_link = get_final_link(webpage, session, wb, wb_output)
                 time.sleep(3)
 
                 # print a colored feedback of the process
@@ -289,26 +291,20 @@ def main(file_path, driver, homepage_only=True, start=2):
                 ))
 
                 # save after each link is added
-                wb.save(FILE_PATH)
+                wb_output.save(FILE_PATH)
         except Exception as e:
             issues_recorded.append([website, webpage, e])
 
     # save at the end of the program
-    wb.save(FILE_PATH)
+    wb_output.save(OUTPUT_FILE)
     
-    print(f"Saved the urls into {FILE_PATH}")
+    # print(f"Saved the urls into {FILE_PATH}")
     # close the driver
     driver.quit()
     
     for issue in issues_recorded:
-        wb["Errors"].append(
+        wb_output["Errors"].append(
                 ("Failed to get the final url for ", issue[1], "Due to", issue[2])
             )
 
 
-if __name__ == '__main__':
-    FILE_PATH = 'webpages_feb - Copy (2).xlsx'
-    HOMEPAGE_ONLY = True
-    NEW_URL_STARTING_ROW = 2
-    driver = init_driver()
-    main(FILE_PATH, driver, homepage_only=HOMEPAGE_ONLY, start=NEW_URL_STARTING_ROW)
